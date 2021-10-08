@@ -89,10 +89,11 @@ void HELPER(plugin_vcpu_udata_cb)(uint32_t cpu_index, void *udata)
 
 void HELPER(plugin_vcpu_mem_cb)(unsigned int vcpu_index,
                                 qemu_plugin_meminfo_t info, uint64_t vaddr,
+                                uint64_t val,
                                 void *userdata)
 { }
 
-static void do_gen_mem_cb(TCGv vaddr, uint32_t info)
+static void do_gen_mem_cb(TCGv vaddr, TCGv_i64 val, uint32_t info)
 {
     TCGv_i32 cpu_index = tcg_temp_new_i32();
     TCGv_i32 meminfo = tcg_const_i32(info);
@@ -103,7 +104,9 @@ static void do_gen_mem_cb(TCGv vaddr, uint32_t info)
                    -offsetof(ArchCPU, env) + offsetof(CPUState, cpu_index));
     tcg_gen_extu_tl_i64(vaddr64, vaddr);
 
-    gen_helper_plugin_vcpu_mem_cb(cpu_index, meminfo, vaddr64, udata);
+    // TCGv_i64 blah = tcg_const_i64(0xc0debabe);
+
+    gen_helper_plugin_vcpu_mem_cb(cpu_index, meminfo, vaddr64, val, udata);
 
     tcg_temp_free_ptr(udata);
     tcg_temp_free_i64(vaddr64);
@@ -141,9 +144,9 @@ static void gen_empty_inline_cb(void)
     tcg_temp_free_i64(val);
 }
 
-static void gen_empty_mem_cb(TCGv addr, uint32_t info)
+static void gen_empty_mem_cb(TCGv addr, uint32_t info, TCGv_i64 val)
 {
-    do_gen_mem_cb(addr, info);
+    do_gen_mem_cb(addr, val, info);
 }
 
 /*
@@ -203,34 +206,34 @@ static void plugin_gen_empty_callback(enum plugin_gen_from from)
 }
 
 union mem_gen_fn {
-    void (*mem_fn)(TCGv, uint32_t);
+    void (*mem_fn)(TCGv, uint32_t, TCGv_i64);
     void (*inline_fn)(void);
 };
 
 static void gen_mem_wrapped(enum plugin_gen_cb type,
-                            const union mem_gen_fn *f, TCGv addr,
+                            const union mem_gen_fn *f, TCGv addr, TCGv_i64 val,
                             uint32_t info, bool is_mem)
 {
     int wr = !!(info & TRACE_MEM_ST);
 
     gen_plugin_cb_start(PLUGIN_GEN_FROM_MEM, type, wr);
     if (is_mem) {
-        f->mem_fn(addr, info);
+        f->mem_fn(addr, info, val);
     } else {
         f->inline_fn();
     }
     tcg_gen_plugin_cb_end();
 }
 
-void plugin_gen_empty_mem_callback(TCGv addr, uint32_t info)
+void plugin_gen_empty_mem_callback(TCGv addr, uint32_t info, TCGv_i64 val)
 {
     union mem_gen_fn fn;
 
     fn.mem_fn = gen_empty_mem_cb;
-    gen_mem_wrapped(PLUGIN_GEN_CB_MEM, &fn, addr, info, true);
+    gen_mem_wrapped(PLUGIN_GEN_CB_MEM, &fn, addr, val, info, true);
 
     fn.inline_fn = gen_empty_inline_cb;
-    gen_mem_wrapped(PLUGIN_GEN_CB_INLINE, &fn, 0, info, false);
+    gen_mem_wrapped(PLUGIN_GEN_CB_INLINE, &fn, 0, 0, info, false);
 }
 
 static TCGOp *find_op(TCGOp *op, TCGOpcode opc)

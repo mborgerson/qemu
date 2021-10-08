@@ -26,10 +26,10 @@ static uint16_t atomic_trace_rmw_pre(CPUArchState *env, target_ulong addr,
 }
 
 static void atomic_trace_rmw_post(CPUArchState *env, target_ulong addr,
-                                  uint16_t info)
+                                  uint16_t info, uint64_t val)
 {
-    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info);
-    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info | TRACE_MEM_ST);
+    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info, val); /* FIXME */
+    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info | TRACE_MEM_ST, val);
 }
 
 #if HAVE_ATOMIC128
@@ -44,9 +44,9 @@ static uint16_t atomic_trace_ld_pre(CPUArchState *env, target_ulong addr,
 }
 
 static void atomic_trace_ld_post(CPUArchState *env, target_ulong addr,
-                                 uint16_t info)
+                                 uint16_t info, uint64_t val)
 {
-    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info);
+    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info, val);
 }
 
 static uint16_t atomic_trace_st_pre(CPUArchState *env, target_ulong addr,
@@ -60,9 +60,9 @@ static uint16_t atomic_trace_st_pre(CPUArchState *env, target_ulong addr,
 }
 
 static void atomic_trace_st_post(CPUArchState *env, target_ulong addr,
-                                 uint16_t info)
+                                 uint16_t info, uint64_t val)
 {
-    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info);
+    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, info, val);
 }
 #endif
 

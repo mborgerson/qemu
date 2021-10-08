@@ -210,6 +210,25 @@ struct qemu_plugin_tb;
 /** struct qemu_plugin_insn - Opaque handle for a translated instruction */
 struct qemu_plugin_insn;
 
+
+struct qemu_plugin_register_desc {
+    size_t len;
+    union {
+        uint32_t data_32u;
+        uint64_t data_64u;
+        unsigned char data[64];
+    };
+};
+
+/**
+ * Get register description and value.
+ *
+ * Returns `true` if the call was successful, otherwise `false`.
+ */
+bool qemu_plugin_get_register(unsigned int vcpu_index, unsigned int reg_index,
+                              struct qemu_plugin_register_desc *desc);
+
+
 /**
  * enum qemu_plugin_cb_flags - type of callback
  *
@@ -483,7 +502,7 @@ const char *qemu_plugin_hwaddr_device_name(const struct qemu_plugin_hwaddr *h);
 typedef void
 (*qemu_plugin_vcpu_mem_cb_t)(unsigned int vcpu_index,
                              qemu_plugin_meminfo_t info, uint64_t vaddr,
-                             void *userdata);
+                             uint64_t val, void *userdata);
 
 void qemu_plugin_register_vcpu_mem_cb(struct qemu_plugin_insn *insn,
                                       qemu_plugin_vcpu_mem_cb_t cb,
@@ -496,7 +515,16 @@ void qemu_plugin_register_vcpu_mem_inline(struct qemu_plugin_insn *insn,
                                           enum qemu_plugin_op op, void *ptr,
                                           uint64_t imm);
 
+/*
+ * Register callback to catch writes made to guest memory, specifically after
+ * syscalls.
+ */
+typedef void
+(*qemu_plugin_vcpu_user_write_cb_t)(qemu_plugin_id_t id, unsigned int vcpu_idx,
+                                    uint64_t vaddr, void *data, size_t len);
 
+void qemu_plugin_register_vcpu_user_write_cb(
+    qemu_plugin_id_t id, qemu_plugin_vcpu_user_write_cb_t cb);
 
 typedef void
 (*qemu_plugin_vcpu_syscall_cb_t)(qemu_plugin_id_t id, unsigned int vcpu_index,

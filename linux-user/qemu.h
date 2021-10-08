@@ -648,7 +648,12 @@ void *lock_user(int type, abi_ulong guest_addr, ssize_t len, bool copy);
 static inline void unlock_user(void *host_ptr, abi_ulong guest_addr,
                                ssize_t len)
 {
-    /* no-op */
+    if (len > 0) {
+        /* Typically len > 0 after some write operation. We hack it on here
+         * for convenience.
+         */
+        qemu_plugin_vcpu_user_write(thread_cpu, guest_addr, host_ptr, len);
+    }
 }
 #else
 void unlock_user(void *host_ptr, abi_ulong guest_addr, ssize_t len);

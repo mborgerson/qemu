@@ -265,6 +265,37 @@ void qemu_plugin_vcpu_for_each(qemu_plugin_id_t id,
     qemu_rec_mutex_unlock(&plugin.lock);
 }
 
+bool qemu_plugin_get_register(unsigned int vcpu_index, unsigned int reg_index,
+                              struct qemu_plugin_register_desc *desc)
+{
+    // hw/core/cpu.h
+    CPUState *cpu = qemu_get_cpu(vcpu_index);
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+    // CPUArchState *env = cpu->env_ptr;
+    // there's also env->regs[gpr_map[n]], but using gdb for now to be
+    // consistent with external definitions
+
+    /*
+        R_EAX, R_EBX, R_ECX, R_EDX, R_ESI, R_EDI, R_EBP, R_ESP,
+    8, 9, 10, 11, 12, 13, 14, 15
+    */
+
+    if (reg_index < cc->gdb_num_core_regs) {
+        GByteArray *arr = g_byte_array_sized_new(16);
+        desc->len = cc->gdb_read_register(cpu, arr, reg_index);
+        assert(desc->len < sizeof(desc->data));
+        memcpy(desc->data, arr->data, desc->len);
+        size_t bytes_left = sizeof(desc->data)-desc->len;
+        if (bytes_left) {
+            memset(&desc->data[desc->len], 0, bytes_left);
+        }
+        g_byte_array_unref(arr);
+        return true;
+    }
+
+    return false;
+}
+
 /* Allocate and return a callback record */
 static struct qemu_plugin_dyn_cb *plugin_get_dyn_cb(GArray **arr)
 {
@@ -341,6 +372,28 @@ void qemu_plugin_tb_trans_cb(CPUState *cpu, struct qemu_plugin_tb *tb)
         qemu_plugin_vcpu_tb_trans_cb_t func = cb->f.vcpu_tb_trans;
 
         func(cb->ctx->id, tb);
+    }
+}
+
+/*
+ * Disable CFI checks.
+ * The callback function has been loaded from an external library so we do not
+ * have type information
+ */
+QEMU_DISABLE_CFI
+void
+qemu_plugin_vcpu_user_write(CPUState *cpu, uint64_t vaddr, void *data, size_t len)
+{
+    struct qemu_plugin_cb *cb, *next;
+    enum qemu_plugin_event ev = QEMU_PLUGIN_EV_VCPU_USER_WRITE;
+
+    if (!test_bit(ev, cpu->plugin_mask)) {
+        return;
+    }
+
+    QLIST_FOREACH_SAFE_RCU(cb, &plugin.cb_lists[ev], entry, next) {
+        qemu_plugin_vcpu_user_write_cb_t func = cb->f.vcpu_user_write;
+        func(cb->ctx->id, cpu->cpu_index, vaddr, data, len);
     }
 }
 
@@ -446,7 +499,7 @@ void exec_inline_op(struct qemu_plugin_dyn_cb *cb)
     }
 }
 
-void qemu_plugin_vcpu_mem_cb(CPUState *cpu, uint64_t vaddr, uint32_t info)
+void qemu_plugin_vcpu_mem_cb(CPUState *cpu, uint64_t vaddr, uint32_t info, uint64_t val)
 {
     GArray *arr = cpu->plugin_mem_cbs;
     size_t i;
@@ -464,7 +517,7 @@ void qemu_plugin_vcpu_mem_cb(CPUState *cpu, uint64_t vaddr, uint32_t info)
         }
         switch (cb->type) {
         case PLUGIN_CB_REGULAR:
-            cb->f.vcpu_mem(cpu->cpu_index, info, vaddr, cb->userp);
+            cb->f.vcpu_mem(cpu->cpu_index, info, vaddr, 0xdeadbeef, cb->userp);
             break;
         case PLUGIN_CB_INLINE:
             exec_inline_op(cb);

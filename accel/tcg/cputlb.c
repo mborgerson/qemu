@@ -2123,7 +2123,7 @@ static inline uint64_t cpu_load_helper(CPUArchState *env, abi_ptr addr,
     oi = make_memop_idx(op, mmu_idx);
     ret = full_load(env, addr, oi, retaddr);
 
-    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, meminfo);
+    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, meminfo, ret);
 
     return ret;
 }
@@ -2564,7 +2564,7 @@ cpu_store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
     oi = make_memop_idx(op, mmu_idx);
     store_helper(env, addr, val, oi, retaddr, op);
 
-    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, meminfo);
+    qemu_plugin_vcpu_mem_cb(env_cpu(env), addr, meminfo, ret);
 }
 
 void cpu_stb_mmuidx_ra(CPUArchState *env, target_ulong addr, uint32_t val,
